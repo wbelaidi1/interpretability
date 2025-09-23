@@ -1,0 +1,5 @@
+# Ignorer le gros dataset
+data/dataproject2025.csv
+
+# Ignorer le notebook en cours de modification
+notebook.ipynb
