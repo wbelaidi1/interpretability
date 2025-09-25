@@ -1,6 +1,40 @@
+numerical_col = [
+    "issue_d",
+    "loan duration",
+    "bc_util",
+    "delinq_2yrs",
+    "dti",
+    "funded_amnt",
+    "inq_last_6mths",
+    "int_rate",
+    "mo_sin_rcnt_rev_tl_op",
+    "mo_sin_rcnt_tl",
+    "mort_acc",
+    "mths_since_recent_bc",
+    "num_actv_bc_tl",
+    "num_bc_tl",
+    "num_il_tl",
+    "num_rev_accts",
+    "open_acc",
+    "pub_rec",
+    "pub_rec_bankruptcies",
+    "revol_util",
+    "tax_liens",
+    "Pct_afro_american",
+    "log_annual_inc",
+    "log_avg_cur_bal",
+    "log_bc_open_to_buy",
+    "log_fico_range_high",
+    "log_mo_sin_old_rev_tl_op",
+    "log_revol_bal",
+    "grade_encoded",
+    "emp_length_encoded",
+    "sub_grade_encoded",
+]
 tgt = "target"
 first_pred = ["Predictions", "Predicted probabilities"]
-col_to_encode = ["emp_title", "purpose", "home_ownership"]
+ohe = ["home_ownership"]
+tgt_encoding = ["emp_title", "purpose", "zip_code"]
 grd = "grade"
 grd_sub = "sub_grade"
 emp_len = "emp_length"
