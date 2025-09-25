@@ -122,17 +122,17 @@ def train_model() -> tuple[pd.Series, pd.Series, pd.Series]:
 
     pipeline.fit(X_train, y_train)
 
-    y_pred = pipeline.predict(X_test)
-
-    y_pred_proba = pipeline.predict_proba(X_test)[:, 1]
-
-    return y_test, y_pred, y_pred_proba
+    return pipeline, X_test, y_test
 
 
 def plot_confusion_matrix(y_test, y_pred, class_names=None):
     """
     Plot confusion matrix with both counts and percentages.
     """
+    pipeline, X_test, y_test = train_model()
+
+    y_pred = pipeline.predict(X_test)
+
     cm = confusion_matrix(y_test, y_pred)
     cm_sum = cm.sum()
     cm_perc = cm / cm_sum * 100
@@ -172,7 +172,9 @@ def get_accuracy() -> None:
     Returns:
         None
     """
-    y_test, y_pred, _ = train_model()
+    pipeline, X_test, y_test = train_model()
+
+    y_pred = pipeline.predict(X_test)
 
     # Metrics
     accuracy = accuracy_score(y_test, y_pred)
@@ -195,7 +197,9 @@ def plot_auc_pr() -> dict:
     Returns:
         dict: Dictionary containing 'roc_auc' and 'pr_auc'.
     """
-    y_test, _, y_pred_proba = train_model()
+    pipeline, X_test, y_test = train_model()
+
+    y_pred_proba = pipeline.predict_proba(X_test)[:, 1]
     # --- ROC AUC ---
     roc_auc = roc_auc_score(y_test, y_pred_proba)
     fpr, tpr, _ = roc_curve(y_test, y_pred_proba)
