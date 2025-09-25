@@ -3,3 +3,6 @@ data/
 
 # Ignorer le notebook en cours de modification
 *.ipynb
+
+# Ignore __pycache__
+__pycache__/
