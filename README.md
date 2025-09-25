@@ -39,38 +39,38 @@ python main.py
 
 #### Technical Steps
 
-1. Interpret provided DP (Default Probability):
+#### 1. Interpret provided DP (Default Probability):
 - Use the estimated default probability (DP) from dataset.
 - Implement 1–2 surrogate models to interpret the unknown model generating DP.
 
-2. Build your own black-box ML model to forecast default.
+#### 2. Build your own black-box ML model to forecast default.
 - Each group must develop their own (no collaboration across groups).
 
-3. Evaluate forecasting performance & structural stability of your model.
+#### 3. Evaluate forecasting performance & structural stability of your model.
 
-4. Global interpretability (part 1):
+#### 4. Global interpretability (part 1):
 - Implement 1–2 surrogate models for your own model.
 - Compare with Step 1.
 
-5. Global interpretability (part 2):
+#### 5. Global interpretability (part 2):
 - Implement Partial Dependence Plots (PDP) for your own model.
 - Compare with Step 4.
 
-6. Local interpretability (part 1):
+#### 6. Local interpretability (part 1):
 - Implement LIME and/or ICE on your model.
 
-7. Local interpretability (part 2):
+#### 7. Local interpretability (part 2):
 - Implement SHAP on your model.
 - Compare results with Step 6.
 
-8. Performance interpretability:
+#### 8. Performance interpretability:
 - Implement Permutation Importance.
 - Check if drivers of predictive performance (Step 8) align with SHAP drivers (Step 7).
 
-9. Fairness analysis:
+#### 9. Fairness analysis:
 - Assess fairness of your model w.r.t. ethnicity of borrower (protected attribute).
 - Discuss findings.
 
-10. Fairness interpretability:
+#### 10. Fairness interpretability:
 - Implement a Fairness Partial Dependence Plot (FPDP) using a fairness measure.
 - Discuss findings.
