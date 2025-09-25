@@ -1,8 +1,23 @@
 import pandas as pd
 import numpy as np
+import xgboost as xgb
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    confusion_matrix,
+    roc_auc_score,
+    roc_curve,
+    precision_recall_curve,
+    average_precision_score,
+)
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder
+from category_encoders import TargetEncoder
 
 from utils import (
     log_col,
@@ -12,13 +27,21 @@ from utils import (
     grade_dico,
     emp_lenght_dico,
     sub_grade_dico,
-    col_to_encode,
     tgt,
     first_pred,
+    numerical_col,
+    ohe,
+    tgt_encoding,
 )
 
 
-def load_and_preprocess_data():
+def load_and_preprocess_data() -> pd.DataFrame:
+    """
+    Load and preprocess the data
+
+    Returns:
+        pd.Dataframe: Preprocessed dataframe
+    """
     df = pd.read_csv("data/data.csv", index_col=0)
 
     df = df.rename({"loan duration": "loan_duration"})
@@ -32,20 +55,154 @@ def load_and_preprocess_data():
     df[f"{emp_len}_encoded"] = df[emp_len].map(emp_lenght_dico)
     df[f"{grd_sub}_encoded"] = df[grd_sub].map(sub_grade_dico)
 
-    lb = LabelEncoder()
-    for col in col_to_encode:
-        df[f"{col}_encoded"] = lb.fit_transform(df[col])
-
-    df = df.drop(columns=log_col + col_to_encode + [grd, grd_sub, emp_len])
+    df = df.drop(columns=log_col + [grd, grd_sub, emp_len])
 
     return df
 
-def create_datasets():
+
+def create_datasets() -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
+    """
+    Create training and testing datasets
+
+    Returns:
+        tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]: the training and testing sets
+    """
     df = load_and_preprocess_data()
     y = df[tgt]
     X = df.drop(columns=first_pred + [tgt], axis=1)
 
     X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42
+        X, y, test_size=0.2, random_state=42
     )
     return X_train, X_test, y_train, y_test
+
+
+def train_model() -> tuple[pd.Series, pd.Series, pd.Series]:
+    """
+    Train the model and make predictions
+
+    Returns:
+        tuple[pd.Series, pd.Series]: the predictions, its probabilities and the true labels associated
+    """
+    X_train, X_test, y_train, y_test = create_datasets()
+
+    model = xgb.XGBClassifier(
+        objective="binary:logistic",
+        eval_metric="logloss",
+        use_label_encoder=False,
+        scale_pos_weight=2,
+        random_state=42,
+    )
+
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ("num", "passthrough", numerical_col),
+            ("ohe", OneHotEncoder(handle_unknown="ignore"), ohe),
+            ("tgt_enc", TargetEncoder(), tgt_encoding),
+        ]
+    )
+
+    pipeline = Pipeline(steps=[("preprocessor", preprocessor), ("classifier", model)])
+
+    pipeline.fit(X_train, y_train)
+
+    y_pred = pipeline.predict(X_test)
+
+    y_pred_proba = pipeline.predict_proba(X_test)[:, 1]
+
+    return y_test, y_pred, y_pred_proba
+
+
+def plot_confusion_matrix(y_test, y_pred, class_names=None):
+    """
+    Plot confusion matrix with both counts and percentages.
+    """
+    cm = confusion_matrix(y_test, y_pred)
+    cm_sum = cm.sum()
+    cm_perc = cm / cm_sum * 100
+
+    annot = np.empty_like(cm).astype(str)
+
+    nrows, ncols = cm.shape
+    for i in range(nrows):
+        for j in range(ncols):
+            c = cm[i, j]
+            p = cm_perc[i, j]
+            if c == 0:
+                annot[i, j] = "0"
+            else:
+                annot[i, j] = f"{c}\n({p:.1f}%)"
+
+    plt.figure(figsize=(6, 5))
+    sns.heatmap(
+        cm,
+        annot=annot,
+        fmt="",
+        cmap="Blues",
+        xticklabels=class_names if class_names is not None else np.arange(ncols),
+        yticklabels=class_names if class_names is not None else np.arange(nrows),
+    )
+    plt.title("Confusion Matrix")
+    plt.xlabel("Predicted")
+    plt.ylabel("True")
+    plt.show()
+
+
+def get_accuracy() -> None:
+    """
+    Compute accuracy, confusion matrix, and classification report.
+    Also display them with plots.
+
+    Returns:
+        None
+    """
+    y_test, y_pred, _ = train_model()
+
+    # Metrics
+    accuracy = accuracy_score(y_test, y_pred)
+
+    # Print summary
+    print(f"Accuracy: {accuracy:.4f}")
+
+    print("\nClassification Report:\n", classification_report(y_test, y_pred))
+
+    print(
+        "\nConfusion Matrix:",
+        plot_confusion_matrix(y_test, y_pred, class_names=["No Default", "Default"]),
+    )
+
+
+def plot_auc_pr() -> dict:
+    """
+    Compute and plot ROC AUC and Precision-Recall curve.
+
+    Returns:
+        dict: Dictionary containing 'roc_auc' and 'pr_auc'.
+    """
+    y_test, _, y_pred_proba = train_model()
+    # --- ROC AUC ---
+    roc_auc = roc_auc_score(y_test, y_pred_proba)
+    fpr, tpr, _ = roc_curve(y_test, y_pred_proba)
+
+    plt.figure(figsize=(6, 5))
+    plt.plot(fpr, tpr, label=f"AUC = {roc_auc:.3f}")
+    plt.plot([0, 1], [0, 1], linestyle="--", color="gray")
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("ROC Curve")
+    plt.legend(loc="lower right")
+    plt.show()
+
+    # --- Precision-Recall Curve ---
+    pr_auc = average_precision_score(y_test, y_pred_proba)
+    precision, recall, _ = precision_recall_curve(y_test, y_pred_proba)
+
+    plt.figure(figsize=(6, 5))
+    plt.plot(recall, precision, label=f"PR AUC = {pr_auc:.3f}")
+    plt.xlabel("Recall")
+    plt.ylabel("Precision")
+    plt.title("Precision-Recall Curve")
+    plt.legend(loc="lower left")
+    plt.show()
+
+    return {"roc_auc": roc_auc, "pr_auc": pr_auc}
