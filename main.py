@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import numpy as np
 import xgboost as xgb
@@ -37,12 +38,27 @@ from utils import (
 
 def load_and_preprocess_data() -> pd.DataFrame:
     """
-    Load and preprocess the data
+    Load and preprocess the data.
 
     Returns:
-        pd.Dataframe: Preprocessed dataframe
+        pd.DataFrame: Preprocessed dataframe
     """
-    df = pd.read_csv("data/data.csv", index_col=0)
+    # Prefer raw dataset in data/, fallback to sample_data if not found
+    candidate_paths = [
+        "data/data.csv",
+        "sample_data/sample.csv",
+    ]
+    csv_path = None
+    for p in candidate_paths:
+        if os.path.exists(p):
+            csv_path = p
+            break
+    if csv_path is None:
+        raise FileNotFoundError(
+            f"No dataset found. Expected one of: {candidate_paths}."
+        )
+
+    df = pd.read_csv(csv_path, index_col=0)
 
     df = df.rename({"loan duration": "loan_duration"})
 

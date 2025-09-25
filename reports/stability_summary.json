@@ -1,0 +1,24 @@
+{
+  "resampling": {
+    "auc_mean": 0.501171875,
+    "auc_std": 0.011962916848454071,
+    "brier_mean": 0.17266975213685012,
+    "brier_std": 0.0065200259064112824,
+    "pred_corr_mean": NaN,
+    "pred_corr_std": NaN,
+    "pred_rmse_mean": 0.03782403111261757,
+    "pred_rmse_std": 0.05805682023566924,
+    "fi_l2_mean": 0.043483492575193704,
+    "fi_l2_std": 0.13036833120067423,
+    "fi_rankcorr_mean": NaN,
+    "fi_rankcorr_std": NaN
+  },
+  "subsample": {
+    "auc_a": 0.5,
+    "brier_a": 0.165624998882413,
+    "auc_b": 0.5,
+    "brier_b": 0.17653060855001854,
+    "fi_l2": 0.0,
+    "fi_rankcorr": NaN
+  }
+}
