@@ -100,3 +100,15 @@ sub_grade_dico = {
     "G4": 34,
     "G5": 35,
 }
+
+best_params = {
+    "max_depth": 4,
+    "min_child_weight": 9,
+    "gamma": 0.00790867295350553,
+    "subsample": 0.8596454064316353,
+    "colsample_bytree": 0.7619123188731923,
+    "learning_rate": 0.03373184445484679,
+    "n_estimators": 1000,
+    "reg_alpha": 0.8981291134257546,
+    "reg_lambda": 0.4813558491685588,
+}
