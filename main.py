@@ -33,10 +33,11 @@ from utils import (
     numerical_col,
     ohe,
     tgt_encoding,
+    best_params,
 )
 
 
-def load_and_preprocess_data() -> pd.DataFrame:
+def _load_and_preprocess_data() -> pd.DataFrame:
     """
     Load and preprocess the data.
 
@@ -76,14 +77,14 @@ def load_and_preprocess_data() -> pd.DataFrame:
     return df
 
 
-def create_datasets() -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
+def _create_datasets() -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
     """
     Create training and testing datasets
 
     Returns:
         tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]: the training and testing sets
     """
-    df = load_and_preprocess_data()
+    df = _load_and_preprocess_data()
     y = df[tgt]
     X = df.drop(columns=first_pred + [tgt], axis=1)
 
@@ -95,19 +96,22 @@ def create_datasets() -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]
 
 def train_model() -> tuple[pd.Series, pd.Series, pd.Series]:
     """
-    Train the model and make predictions
+    Train the model and make predictions. This model has been fine-tuned based on AUC thanks to optuna.
 
     Returns:
         tuple[pd.Series, pd.Series]: the predictions, its probabilities and the true labels associated
     """
-    X_train, X_test, y_train, y_test = create_datasets()
+    X_train, X_test, y_train, y_test = _create_datasets()
+
+    neg, pos = (y_train == 0).sum(), (y_train == 1).sum()
+    scale_pos_weight = np.sqrt(neg / pos)
 
     model = xgb.XGBClassifier(
         objective="binary:logistic",
-        eval_metric="logloss",
-        use_label_encoder=False,
-        scale_pos_weight=2,
+        eval_metric="auc",
+        scale_pos_weight=scale_pos_weight,
         random_state=42,
+        **best_params,
     )
 
     preprocessor = ColumnTransformer(
