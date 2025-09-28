@@ -32,4 +32,3 @@ def plot_ICE(pipeline, X, feature, n_samples=50):
     plt.title(f"ICE + PDP for {feature}")
     plt.legend()
     plt.show()
-
