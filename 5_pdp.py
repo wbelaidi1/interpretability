@@ -1,8 +1,8 @@
 """
 Step 5 - PDP (Partial Dependence Plots)
 ---------------------------------------
-Implémente la méthode PDP pour interpréter notre modèle.
-Comparaison avec les surrogate models (Step 4) prévue dans le notebook/slides.
+Implémentation de  la méthode PDP pour interpréter notre modèle.
+Comparaison avec les surrogate models (Step 4).
 """
 
 import matplotlib.pyplot as plt
