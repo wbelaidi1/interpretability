@@ -6,35 +6,33 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, FunctionTransformer
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier, export_text
-from sklearn.metrics import accuracy_score, roc_auc_score
 from category_encoders import TargetEncoder
 
 from utils import numerical_col, ohe, tgt_encoding
-from main import _create_datasets
+from main import _create_datasets, train_model
 
 
-# 1) Créer/entraîner les trois modèles surrogates (Logit, PLTR, Logit L1)
-def create_surrogate_models(
+def create_surrogates_from_xgb(
     max_depth: int = 5,
     min_samples_leaf: int = 20,
     ccp_alpha: float = 0.0,
     l1_C: float = 1.0,
-    use_class_weight: bool = False,
 ):
     """
-    Construit le préprocesseur donné, split les données via _create_datasets(),
-    et entraîne trois surrogates :
-    - Logistic Regression (L2 par défaut)
-    - Decision Tree (PLTR)
-    - Logistic Regression L1 (penalisée)
-
+    Fit 3 surrogate models (Logit, PLTR, Logit L1) on the predictions of the XGB model.
     Returns:
         models (dict), preprocessor (ColumnTransformer), X_test, y_test
     """
-    # splits depuis les fonctions existantes
+    # split data
     X_train, X_test, y_train, y_test = _create_datasets()
 
-    # préprocesseur EXACTEMENT comme demandé
+    # train XGB teacher
+    pipeline, _, _ = train_model()
+
+    # predicted labels from teacher (this becomes the surrogate target)
+    y_hat_train = pipeline.predict(X_train)
+
+    # preprocessor (same as XGB pipeline)
     preprocessor = ColumnTransformer(
         transformers=[
             ("num", "passthrough", numerical_col),
@@ -43,103 +41,46 @@ def create_surrogate_models(
         ]
     )
 
-    class_weight = "balanced" if use_class_weight else None
+    # logistic regression (L2)
+    logit = Pipeline([
+        ("preprocessor", preprocessor),
+        ("clf", LogisticRegression(max_iter=2000, random_state=42))
+    ])
+    logit.fit(X_train, y_hat_train)
 
-    # Logistic regression "normale"
-    logit_pipe = Pipeline(
-        steps=[
-            ("preprocessor", preprocessor),
-            (
-                "clf",
-                LogisticRegression(
-                    max_iter=2000,
-                    n_jobs=-1,
-                    random_state=42,
-                    class_weight=class_weight,
-                ),
-            ),
-        ]
-    )
+    # PLTR (decision tree)
+    pltr = Pipeline([
+        ("preprocessor", preprocessor),
+        ("to_dense", FunctionTransformer(lambda X: X.toarray() if hasattr(X, "toarray") else X,
+                                         accept_sparse=True)),
+        ("clf", DecisionTreeClassifier(
+            max_depth=max_depth,
+            min_samples_leaf=min_samples_leaf,
+            ccp_alpha=ccp_alpha,
+            random_state=42
+        ))
+    ])
+    pltr.fit(X_train, y_hat_train)
 
-    # PLTR (arbre)
-    to_dense = FunctionTransformer(
-        lambda X: X.toarray() if hasattr(X, "toarray") else X, accept_sparse=True
-    )
-    pltr_pipe = Pipeline(
-        steps=[
-            ("preprocessor", preprocessor),
-            ("to_dense", to_dense),
-            (
-                "clf",
-                DecisionTreeClassifier(
-                    max_depth=max_depth,
-                    min_samples_leaf=min_samples_leaf,
-                    ccp_alpha=ccp_alpha,
-                    random_state=42,
-                    class_weight=class_weight,
-                ),
-            ),
-        ]
-    )
+    # logistic regression L1
+    logit_l1 = Pipeline([
+        ("preprocessor", preprocessor),
+        ("clf", LogisticRegression(
+            penalty="l1", solver="liblinear", C=l1_C,
+            max_iter=2000, random_state=42
+        ))
+    ])
+    logit_l1.fit(X_train, y_hat_train)
 
-    # Logistic regression L1 (penalisée)
-    penalised_lr = Pipeline(
-        steps=[
-            ("preprocessor", preprocessor),
-            (
-                "model",
-                LogisticRegression(
-                    penalty="l1",
-                    solver="liblinear",
-                    C=l1_C,
-                    max_iter=2000,
-                    n_jobs=-1,
-                    class_weight=class_weight,
-                ),
-            ),
-        ]
-    )
-
-    # fit
-    logit_pipe.fit(X_train, y_train)
-    pltr_pipe.fit(X_train, y_train)
-    penalised_lr.fit(X_train, y_train)
-
-    models = {
-        "logit": logit_pipe,
-        "pltr": pltr_pipe,
-        "logit_l1": penalised_lr,
-    }
+    models = {"logit": logit, "pltr": pltr, "logit_l1": logit_l1}
     return models, preprocessor, X_test, y_test
 
-
-# 2) Évaluer (Accuracy + ROC AUC) les modèles sur X_test, y_test
-def evaluate_models(models: dict, X_test, y_test) -> dict:
+def plot_surrogate_importances(models: dict, preprocessor: ColumnTransformer, top: int = 20):
     """
-    Calcule Accuracy et ROC AUC pour chaque modèle.
+    Plot feature importances for surrogate models:
+    - Logistic / L1 Logistic: absolute coefficients
+    - PLTR: Gini importances
     """
-    out = {}
-    for name, pipe in models.items():
-        proba = pipe.predict_proba(X_test)[:, 1]
-        preds = (proba >= 0.5).astype(int)
-        out[name] = {
-            "accuracy": float(accuracy_score(y_test, preds)),
-            "roc_auc": float(roc_auc_score(y_test, proba)),
-        }
-    return out
-
-
-# 3) Tracer les feature importances (|coef| pour logit/L1, Gini pour PLTR)
-def plot_feature_importances(
-    models: dict, preprocessor: ColumnTransformer, top: int = 20
-):
-    """
-    Trace deux/trois barplots (selon modèles fournis) des importances :
-    - Logistic / Logistic L1 : |coefficients|
-    - PLTR : feature_importances_ (Gini)
-    """
-
-    # helper local pour récupérer les noms de colonnes transformées
     def _get_feature_names(pre):
         names = []
         for name, trans, cols in pre.transformers_:
@@ -148,69 +89,46 @@ def plot_feature_importances(
             if hasattr(trans, "get_feature_names_out"):
                 fn = list(trans.get_feature_names_out(cols))
             else:
-                if isinstance(cols, (list, tuple, np.ndarray)):
-                    fn = list(cols)
-                else:
-                    fn = [cols]
+                fn = list(cols if isinstance(cols, (list, tuple, np.ndarray)) else [cols])
             names.extend(fn)
         return names
 
     feats = _get_feature_names(preprocessor)
 
-    # --- Logistic Regression (L2) ---
+    # logistic (L2)
     if "logit" in models:
         coefs = models["logit"].named_steps["clf"].coef_.ravel()
         abs_coefs = np.abs(coefs)
-        k = min(top, len(abs_coefs))
-        idx = np.argsort(abs_coefs)[::-1][:k]
-
-        plt.figure(figsize=(8, 0.4 * k + 3))
-        plt.barh(range(k), abs_coefs[idx])
-        plt.yticks(range(k), [feats[i] for i in idx])
+        idx = np.argsort(abs_coefs)[::-1][:top]
+        plt.figure(figsize=(8, 0.4 * len(idx) + 3))
+        plt.barh(range(len(idx)), abs_coefs[idx])
+        plt.yticks(range(len(idx)), [feats[i] for i in idx])
         plt.xlabel("|Coefficient|")
-        plt.title(f"Top {k} Feature Importances — Logistic Regression")
+        plt.title("Top feature importances — Logistic Regression surrogate")
         plt.gca().invert_yaxis()
-        plt.tight_layout()
         plt.show()
 
-    # --- PLTR ---
+    # PLTR
     if "pltr" in models:
         imps = models["pltr"].named_steps["clf"].feature_importances_
-        nz = imps > 0
-        if nz.sum() == 0:
-            print("PLTR: aucune importance non nulle (arbre trop contraint).")
-        else:
-            feats_pltr = np.array(feats)[nz]
-            imps_pltr = imps[nz]
-            k = min(top, len(imps_pltr))
-            idx = np.argsort(imps_pltr)[::-1][:k]
-
-            plt.figure(figsize=(8, 0.4 * k + 3))
-            plt.barh(range(k), imps_pltr[idx])
-            plt.yticks(range(k), feats_pltr[idx])
-            plt.xlabel("Feature importance (Gini)")
-            plt.title(f"Top {k} Feature Importances — Decision Tree (PLTR)")
-            plt.gca().invert_yaxis()
-            plt.tight_layout()
-            plt.show()
-
-    # --- Logistic Regression L1 ---
-    if "logit_l1" in models:
-        coefs = models["logit_l1"].named_steps["model"].coef_.ravel()
-        abs_coefs = np.abs(coefs)
-        k = min(top, len(abs_coefs))
-        idx = np.argsort(abs_coefs)[::-1][:k]
-
-        plt.figure(figsize=(8, 0.4 * k + 3))
-        plt.barh(range(k), abs_coefs[idx])
-        plt.yticks(range(k), [feats[i] for i in idx])
-        plt.xlabel("|Coefficient| (L1)")
-        plt.title(f"Top {k} Feature Importances — Penalised Logistic Regression (L1)")
+        idx = np.argsort(imps)[::-1][:top]
+        plt.figure(figsize=(8, 0.4 * len(idx) + 3))
+        plt.barh(range(len(idx)), imps[idx])
+        plt.yticks(range(len(idx)), [feats[i] for i in idx])
+        plt.xlabel("Feature importance (Gini)")
+        plt.title("Top feature importances — PLTR surrogate")
         plt.gca().invert_yaxis()
-        plt.tight_layout()
         plt.show()
 
-    # (optionnel) règles de l’arbre
-    if "pltr" in models:
-        print("\nRègles PLTR:")
-        print(export_text(models["pltr"].named_steps["clf"], feature_names=feats))
+    # logistic L1
+    if "logit_l1" in models:
+        coefs = models["logit_l1"].named_steps["clf"].coef_.ravel()
+        abs_coefs = np.abs(coefs)
+        idx = np.argsort(abs_coefs)[::-1][:top]
+        plt.figure(figsize=(8, 0.4 * len(idx) + 3))
+        plt.barh(range(len(idx)), abs_coefs[idx])
+        plt.yticks(range(len(idx)), [feats[i] for i in idx])
+        plt.xlabel("|Coefficient| (L1)")
+        plt.title("Top feature importances — Logistic Regression L1 surrogate")
+        plt.gca().invert_yaxis()
+        plt.show()
