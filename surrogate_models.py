@@ -1,6 +1,3 @@
-# surrogates.py
-# -*- coding: utf-8 -*-
-
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -10,8 +7,8 @@ from sklearn.preprocessing import OneHotEncoder, FunctionTransformer
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier, export_text
 from sklearn.metrics import accuracy_score, roc_auc_score
-
 from category_encoders import TargetEncoder
+
 from utils import numerical_col, ohe, tgt_encoding
 from main import _create_datasets
 
@@ -27,9 +24,9 @@ def create_surrogate_models(
     """
     Construit le préprocesseur donné, split les données via _create_datasets(),
     et entraîne trois surrogates :
-      - Logistic Regression (L2 par défaut)
-      - Decision Tree (PLTR)
-      - Logistic Regression L1 (penalisée)
+    - Logistic Regression (L2 par défaut)
+    - Decision Tree (PLTR)
+    - Logistic Regression L1 (penalisée)
 
     Returns:
         models (dict), preprocessor (ColumnTransformer), X_test, y_test
@@ -49,43 +46,59 @@ def create_surrogate_models(
     class_weight = "balanced" if use_class_weight else None
 
     # Logistic regression "normale"
-    logit_pipe = Pipeline(steps=[
-        ("preprocessor", preprocessor),
-        ("clf", LogisticRegression(
-            max_iter=2000,
-            n_jobs=-1,
-            random_state=42,
-            class_weight=class_weight,
-        ))
-    ])
+    logit_pipe = Pipeline(
+        steps=[
+            ("preprocessor", preprocessor),
+            (
+                "clf",
+                LogisticRegression(
+                    max_iter=2000,
+                    n_jobs=-1,
+                    random_state=42,
+                    class_weight=class_weight,
+                ),
+            ),
+        ]
+    )
 
     # PLTR (arbre)
-    to_dense = FunctionTransformer(lambda X: X.toarray() if hasattr(X, "toarray") else X,
-                                   accept_sparse=True)
-    pltr_pipe = Pipeline(steps=[
-        ("preprocessor", preprocessor),
-        ("to_dense", to_dense),
-        ("clf", DecisionTreeClassifier(
-            max_depth=max_depth,
-            min_samples_leaf=min_samples_leaf,
-            ccp_alpha=ccp_alpha,
-            random_state=42,
-            class_weight=class_weight,
-        ))
-    ])
+    to_dense = FunctionTransformer(
+        lambda X: X.toarray() if hasattr(X, "toarray") else X, accept_sparse=True
+    )
+    pltr_pipe = Pipeline(
+        steps=[
+            ("preprocessor", preprocessor),
+            ("to_dense", to_dense),
+            (
+                "clf",
+                DecisionTreeClassifier(
+                    max_depth=max_depth,
+                    min_samples_leaf=min_samples_leaf,
+                    ccp_alpha=ccp_alpha,
+                    random_state=42,
+                    class_weight=class_weight,
+                ),
+            ),
+        ]
+    )
 
     # Logistic regression L1 (penalisée)
-    penalised_lr = Pipeline(steps=[
-        ("preprocessor", preprocessor),
-        ("model", LogisticRegression(
-            penalty="l1",
-            solver="liblinear",
-            C=l1_C,
-            max_iter=2000,
-            n_jobs=-1,
-            class_weight=class_weight,
-        ))
-    ])
+    penalised_lr = Pipeline(
+        steps=[
+            ("preprocessor", preprocessor),
+            (
+                "model",
+                LogisticRegression(
+                    penalty="l1",
+                    solver="liblinear",
+                    C=l1_C,
+                    max_iter=2000,
+                    n_jobs=-1,
+                    class_weight=class_weight,
+                ),
+            ),
+        ]
+    )
 
     # fit
     logit_pipe.fit(X_train, y_train)
@@ -117,12 +130,15 @@ def evaluate_models(models: dict, X_test, y_test) -> dict:
 
 
 # 3) Tracer les feature importances (|coef| pour logit/L1, Gini pour PLTR)
-def plot_feature_importances(models: dict, preprocessor: ColumnTransformer, top: int = 20):
+def plot_feature_importances(
+    models: dict, preprocessor: ColumnTransformer, top: int = 20
+):
     """
     Trace deux/trois barplots (selon modèles fournis) des importances :
-      - Logistic / Logistic L1 : |coefficients|
-      - PLTR : feature_importances_ (Gini)
+    - Logistic / Logistic L1 : |coefficients|
+    - PLTR : feature_importances_ (Gini)
     """
+
     # helper local pour récupérer les noms de colonnes transformées
     def _get_feature_names(pre):
         names = []
