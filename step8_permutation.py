@@ -6,7 +6,7 @@ from sklearn.metrics import roc_auc_score, average_precision_score, accuracy_sco
 from main import train_model
 
 try:
-    from surrogate_models import get_feature_names  # déjà défini chez toi
+    from surrogate_models import get_feature_names  
 except ImportError:
     # fallback minimal
     def get_feature_names(pre):
