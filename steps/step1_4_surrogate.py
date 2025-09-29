@@ -111,7 +111,7 @@ def plot_top10_coefficient_evolution(coef_df):
 # Main script
 # -------------------------------------------------------------------
 
-def main():
+def plot_surrogate_models():
     # Load pipeline and data
     pipeline, X_test, y_test = train_model()
     X_train, X_test, y_train, y_test = _create_datasets()
@@ -155,7 +155,3 @@ def main():
 
     # Plot evolution
     plot_top10_coefficient_evolution(coef_df_combined)
-
-
-if __name__ == "__main__":
-    main()
