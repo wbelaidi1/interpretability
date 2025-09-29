@@ -439,152 +439,143 @@ def plot_pdp_2d(feature1: str, feature2: str):
     plt.show()
 
 
-def create_surrogates_from_xgb(
-    max_depth: int = 5,
-    min_samples_leaf: int = 20,
-    ccp_alpha: float = 0.0,
-    l1_C: float = 1.0,
-):
-    """
-    Fit 3 surrogate models (Logit, PLTR, Logit L1) on the predictions of the XGB model.
-    Returns:
-        models (dict), preprocessor (ColumnTransformer), X_test, y_test
-    """
-    # split data
-    X_train, X_test, y_train, y_test = _create_datasets()
-
-    # train XGB teacher
-    pipeline, _, _ = train_model()
-
-    # predicted labels from teacher (this becomes the surrogate target)
-    y_hat_train = pipeline.predict(X_train)
-
-    # preprocessor (same as XGB pipeline)
-    preprocessor = ColumnTransformer(
+def build_preprocessor():
+    """Return a ColumnTransformer with scaling, OHE, and Target Encoding."""
+    return ColumnTransformer(
         transformers=[
-            ("num", "passthrough", numerical_col),
+            ("num", StandardScaler(), numerical_col),
             ("ohe", OneHotEncoder(handle_unknown="ignore"), ohe),
             ("tgt_enc", TargetEncoder(), tgt_encoding),
         ]
     )
 
-    # logistic regression (L2)
-    logit = Pipeline(
-        [
-            ("preprocessor", preprocessor),
-            ("clf", LogisticRegression(max_iter=2000, random_state=42)),
-        ]
-    )
-    logit.fit(X_train, y_hat_train)
 
-    # PLTR (decision tree)
-    pltr = Pipeline(
-        [
-            ("preprocessor", preprocessor),
-            (
-                "to_dense",
-                FunctionTransformer(
-                    lambda X: X.toarray() if hasattr(X, "toarray") else X,
-                    accept_sparse=True,
-                ),
-            ),
-            (
-                "clf",
-                DecisionTreeClassifier(
-                    max_depth=max_depth,
-                    min_samples_leaf=min_samples_leaf,
-                    ccp_alpha=ccp_alpha,
-                    random_state=42,
-                ),
-            ),
-        ]
-    )
-    pltr.fit(X_train, y_hat_train)
-
-    # logistic regression L1
-    logit_l1 = Pipeline(
-        [
-            ("preprocessor", preprocessor),
-            (
-                "clf",
-                LogisticRegression(
-                    penalty="l1",
-                    solver="liblinear",
-                    C=l1_C,
-                    max_iter=2000,
-                    random_state=42,
-                ),
-            ),
-        ]
-    )
-    logit_l1.fit(X_train, y_hat_train)
-
-    models = {"logit": logit, "pltr": pltr, "logit_l1": logit_l1}
-    return models, preprocessor, X_test, y_test
-
-
-def plot_surrogate_importances(
-    models: dict, preprocessor: ColumnTransformer, top: int = 20
-):
+def fit_and_analyze_model(X, y, preprocessor, model, title):
     """
-    Plot feature importances for surrogate models:
-    - Logistic / L1 Logistic: absolute coefficients
-    - PLTR: Gini importances
+    Fit a logistic model, plot top 10 coefficients, and return coefficients DataFrame.
     """
+    pipeline = Pipeline(steps=[("preprocessor", preprocessor), ("classifier", model)])
+    pipeline.fit(X, y)
 
-    def _get_feature_names(pre):
-        names = []
-        for name, trans, cols in pre.transformers_:
-            if name == "remainder":
-                continue
-            if hasattr(trans, "get_feature_names_out"):
-                fn = list(trans.get_feature_names_out(cols))
-            else:
-                fn = list(
-                    cols if isinstance(cols, (list, tuple, np.ndarray)) else [cols]
-                )
-            names.extend(fn)
-        return names
+    # Extract coefficients
+    coefficients = model.coef_[0]
+    ohe_features = list(preprocessor.named_transformers_["ohe"].get_feature_names_out(ohe))
+    feature_names = numerical_col + ohe_features + tgt_encoding
 
-    feats = _get_feature_names(preprocessor)
+    coef_df = pd.DataFrame({
+        "feature": feature_names,
+        "coefficient": coefficients
+    }).sort_values(by="coefficient", key=abs, ascending=False)
 
-    # logistic (L2)
-    if "logit" in models:
-        coefs = models["logit"].named_steps["clf"].coef_.ravel()
-        abs_coefs = np.abs(coefs)
-        idx = np.argsort(abs_coefs)[::-1][:top]
-        plt.figure(figsize=(8, 0.4 * len(idx) + 3))
-        plt.barh(range(len(idx)), abs_coefs[idx])
-        plt.yticks(range(len(idx)), [feats[i] for i in idx])
-        plt.xlabel("|Coefficient|")
-        plt.title("Top feature importances — Logistic Regression surrogate")
-        plt.gca().invert_yaxis()
-        plt.show()
+    coef_df["abs_coef"] = coef_df["coefficient"].abs()
+    top_coef_df = coef_df.nlargest(10, "abs_coef").sort_values(by="abs_coef", ascending=False)
+
+    # Plot
+    norm = plt.Normalize(top_coef_df["abs_coef"].min(), top_coef_df["abs_coef"].max())
+    colors = plt.cm.viridis(norm(top_coef_df["abs_coef"]))
+
+    plt.figure(figsize=(8, 6))
+    sns.barplot(x="coefficient", y="feature", data=top_coef_df, palette=colors)
+    plt.title(f"Top 10 coefficients - {title}")
+    plt.xlabel("Coefficient")
+    plt.ylabel("Feature")
+    plt.tight_layout()
+    plt.show()
+
+    return pipeline, coef_df
+
+
+def evaluate_model(pipeline, X, y_true, y_pred_ref, name="Model"):
+    """Evaluate accuracy against a reference prediction."""
+    y_pred_train = pipeline.predict(X)
+    acc = accuracy_score(y_true, y_pred_train)
+    print(f"{name} Accuracy: {acc:.4f}")
+    return acc
+
+
+def plot_top10_coefficient_evolution(coef_df):
+    """
+    Plot evolution of top 10 coefficients for logistic regression vs PLTR.
+    """
+    coef_df['max_abs_coef'] = coef_df[['coef_logistic_regression_1',
+                                       'coef_logistic_regression_2',
+                                       'coef_PLTR_1',
+                                       'coef_PLTR_2']].abs().max(axis=1)
+    top10_df = coef_df.nlargest(10, 'max_abs_coef')
+
+    # Logistic Regression
+    coef_log = top10_df[['feature', 'coef_logistic_regression_1', 'coef_logistic_regression_2']]
+    coef_log_melt = coef_log.melt(id_vars='feature',
+                                  value_vars=['coef_logistic_regression_1', 'coef_logistic_regression_2'],
+                                  var_name='Step', value_name='Coefficient')
+
+    plt.figure(figsize=(10, 6))
+    sns.barplot(x='Coefficient', y='feature', hue='Step', data=coef_log_melt, palette='Blues')
+    plt.title("Evolution of Top 10 Logistic Regression Coefficients")
+    plt.tight_layout()
+    plt.show()
 
     # PLTR
-    if "pltr" in models:
-        imps = models["pltr"].named_steps["clf"].feature_importances_
-        idx = np.argsort(imps)[::-1][:top]
-        plt.figure(figsize=(8, 0.4 * len(idx) + 3))
-        plt.barh(range(len(idx)), imps[idx])
-        plt.yticks(range(len(idx)), [feats[i] for i in idx])
-        plt.xlabel("Feature importance (Gini)")
-        plt.title("Top feature importances — PLTR surrogate")
-        plt.gca().invert_yaxis()
-        plt.show()
+    coef_pltr = top10_df[['feature', 'coef_PLTR_1', 'coef_PLTR_2']]
+    coef_pltr_melt = coef_pltr.melt(id_vars='feature',
+                                    value_vars=['coef_PLTR_1', 'coef_PLTR_2'],
+                                    var_name='Step', value_name='Coefficient')
 
-    # logistic L1
-    if "logit_l1" in models:
-        coefs = models["logit_l1"].named_steps["clf"].coef_.ravel()
-        abs_coefs = np.abs(coefs)
-        idx = np.argsort(abs_coefs)[::-1][:top]
-        plt.figure(figsize=(8, 0.4 * len(idx) + 3))
-        plt.barh(range(len(idx)), abs_coefs[idx])
-        plt.yticks(range(len(idx)), [feats[i] for i in idx])
-        plt.xlabel("|Coefficient| (L1)")
-        plt.title("Top feature importances — Logistic Regression L1 surrogate")
-        plt.gca().invert_yaxis()
-        plt.show()
+    plt.figure(figsize=(10, 6))
+    sns.barplot(x='Coefficient', y='feature', hue='Step', data=coef_pltr_melt, palette='Greens')
+    plt.title("Evolution of Top 10 PLTR Coefficients")
+    plt.tight_layout()
+    plt.show()
+
+
+# -------------------------------------------------------------------
+# Main script
+# -------------------------------------------------------------------
+
+def plot_surrogate_models():
+    # Load pipeline and data
+    pipeline, X_test, y_test = train_model()
+    X_train, X_test, y_train, y_test = _create_datasets()
+    df = _load_and_preprocess_data()
+
+    # Base data
+    X = df.drop(columns=first_pred + [tgt])
+    y_pred_ref = pipeline.predict(X)
+
+    preprocessor = build_preprocessor()
+
+    # Step 1: Logistic Regression (no penalty)
+    model_1 = LogisticRegression(max_iter=200)
+    pipeline_1, coef_df_1 = fit_and_analyze_model(X, y_pred_ref, preprocessor, model_1, "Logistic Regression")
+    evaluate_model(pipeline_1, X, y_pred_ref, y_pred_ref, "Logistic Regression")
+
+    # Step 2: Logistic Regression with L1 penalty (PLTR)
+    model_2 = LogisticRegression(penalty="l1", solver="liblinear", C=1.0, max_iter=1000)
+    pipeline_2, coef_df_2 = fit_and_analyze_model(X, y_pred_ref, preprocessor, model_2, "PLTR (L1 Regularization)")
+    evaluate_model(pipeline_2, X, y_pred_ref, y_pred_ref, "PLTR")
+
+    # Repeat with y_pred = df["Predictions"]
+    y_pred = df["Predictions"]
+
+    model_1_step1 = LogisticRegression(max_iter=200)
+    pipeline_1_step1, coef_df_1_step1 = fit_and_analyze_model(X, y_pred, preprocessor, model_1_step1, "Logistic Regression (step1)")
+    evaluate_model(pipeline_1_step1, X, y_pred, y_pred, "Logistic Regression Step1")
+
+    model_2_step1 = LogisticRegression(penalty="l2", solver="liblinear", C=0.1, max_iter=1000)
+    pipeline_2_step1, coef_df_2_step1 = fit_and_analyze_model(X, y_pred, preprocessor, model_2_step1, "PLTR (L2 Regularization)")
+    evaluate_model(pipeline_2_step1, X, y_pred, y_pred, "PLTR Step1")
+
+    # Merge coefficients
+    coef_df_combined = pd.DataFrame({
+        "feature": coef_df_1_step1["feature"],
+        "coef_logistic_regression_1": coef_df_1_step1["coefficient"],
+        "coef_PLTR_1": coef_df_2_step1["coefficient"],
+        "coef_logistic_regression_2": coef_df_1["coefficient"],
+        "coef_PLTR_2": coef_df_2["coefficient"],
+    })
+
+    # Plot evolution
+    plot_top10_coefficient_evolution(coef_df_combined)
 
 
 def plot_ICE(pipeline, X, feature, n_samples=50):
