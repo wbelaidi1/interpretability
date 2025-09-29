@@ -1,6 +1,6 @@
-# Interpretability Project
+## Interpretability, Stability and Algorithmic Fairness — Project
 
-## Group Members
+### Group Members
 - Adrien Senghor
 - Grégoire Bidault
 - Lea Tinelli
@@ -8,69 +8,57 @@
 - Victor Soto
 - William Belaidi
 
-## Project Structure
-- `main.py`: Data loading and preprocessing functions, and train/test split helper
-- `utils.py`: Column names and encoding dictionaries used during preprocessing
-- `data/`: The dataset
-- `sample_data/`: Example CSV for reference
+### Project Structure
+- `main.py`: End‑to‑end pipeline utilities (data prep, training, plots, interpretability, fairness).
+- `utils.py`: Column names, encoders, and constants used by the pipeline.
+- `steps/`: Earlier stepwise scripts (surrogate models, PDP/ICE, permutation importance, stability, fairness). Functionality is centralized in `main.py`.
+- `data/`: Put your main dataset here.
+- `sample_data/`: Tiny sample for quick trials.
+- `reports/`: Optional place for saving figures if you choose to do so.
 
-## Setup
-We recommend using a virtual environment.
+### Setup
+We recommend a virtual environment.
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Data
-- Expected file: `data/data.csv` (first column is an index).
-- The script will create encoded/log-transformed features and drop originals accordingly.
+### Data
+  - `data/dataproject2025.csv` (dataset)
 
-## Usage
-Run the preprocessing and obtain train/test splits:
-```bash
-python main.py
+The pipeline automatically creates log‑transformed and encoded features, then drops the originals accordingly.
+
+### How to Use (import from main)
+Open a Python session or a notebook and import the functions you need from `main.py`.
+
+
+### 1) Train and get the fitted pipeline + test split
+pipeline, X_test, y_test = train_model()
+
+### 2) Basic performance
+model_performance()
+plot_roc_pr_curves()
+plot_precision_recall_vs_threshold()
+
+### 3) Global interpretability
+plot_pdp("some_feature_name")
+plot_pdp_2d("feature_a", "feature_b")
+plot_feature_importance(nb_features=10)
+
+### 4) Local interpretability (LIME vs SHAP for one instance)
+compare_shap_lime()
+
+### 5) Structural stability of feature importances
+result = assess_structural_stability_xgb(n_runs=8, test_size=0.2)
+plot_structural_stability(result, top=20)
+
+### 6) Fairness analysis by binned ethnicity
+by_group, gaps, verdict = assess_fairness_ethnicity(alpha=0.05, bin_size=10)
+plot_positive_rates(by_group)
+plot_tpr_fpr(by_group)
+fairness_pdp()  # fairness‑aware PDP (SPD across groups)
 ```
 
-## Notes
-- The code uses `LabelEncoder` for `emp_title`, `purpose`, and `home_ownership`.
-- Grade mappings are defined in `utils.py`. Adjust as needed for your data.
-
-## Reminder
-
-#### Technical Steps
-
-#### 1. Interpret provided DP (Default Probability):
-- Use the estimated default probability (DP) from dataset.
-- Implement 1–2 surrogate models to interpret the unknown model generating DP.
-
-#### 2. Build your own black-box ML model to forecast default.
-- Each group must develop their own (no collaboration across groups).
-
-#### 3. Evaluate forecasting performance & structural stability of your model.
-
-#### 4. Global interpretability (part 1):
-- Implement 1–2 surrogate models for your own model.
-- Compare with Step 1.
-
-#### 5. Global interpretability (part 2):
-- Implement Partial Dependence Plots (PDP) for your own model.
-- Compare with Step 4.
-
-#### 6. Local interpretability (part 1):
-- Implement LIME and/or ICE on your model.
-
-#### 7. Local interpretability (part 2):
-- Implement SHAP on your model.
-- Compare results with Step 6.
-
-#### 8. Performance interpretability:
-- Implement Permutation Importance.
-- Check if drivers of predictive performance (Step 8) align with SHAP drivers (Step 7).
-
-#### 9. Fairness analysis:
-- Assess fairness of your model w.r.t. ethnicity of borrower (protected attribute).
-- Discuss findings.
-
-#### 10. Fairness interpretability:
-- Implement a Fairness Partial Dependence Plot (FPDP) using a fairness measure.
-- Discuss findings.
+Notes:
+- Figures are shown via `matplotlib`. If you prefer files, call `plt.savefig("reports/your_figure.png")` right before `plt.show()` or adapt the functions.
+- The sensitive attribute used in fairness utilities is `Pct_afro_american` (binned for groupwise metrics).
